@@ -67,7 +67,7 @@ lanA = request.Link("link1", "vlan")
 lanB = request.Link("link2", "vlan")
 lanTransit = request.Link("link3", "vlan")
 lanHostTransit = request.Link("link4", "vlan")
-for link, tag in ((lanA, 3811), (lanB, 3812), (lanTransit, 3813), (lanHostTransit, 3814)):
+for link, tag in ((lanA, 3911), (lanB, 3912), (lanTransit, 3913), (lanHostTransit, 3914)):
     link.setVlanTag(tag)
     link.link_multiplexing = True
     link.best_effort = True
