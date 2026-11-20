@@ -106,7 +106,7 @@ for i, nodeName in enumerate(nodeList):
 
     # Reference the same host eth3 interface from each VLAN link.
     host_iface2 = host.addInterface()
-    host_iface2.component_id = "eth3"
+    host_iface2.component_id = "eth2"
     localLink = lanA if i == 0 else lanB
     localLink.addInterface(host_iface2)
     lanHostTransit.addInterface(host_iface2)
