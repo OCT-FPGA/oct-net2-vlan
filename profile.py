@@ -16,11 +16,11 @@ toolVersion = ["2023.2", "2023.1"]
 
 pc.defineParameter(
     "nodes", "List of nodes", portal.ParameterType.STRING, "pc160,pc161",
-    longDescription="Comma-separated UMass OCT nodes. The first node uses VLAN 3811, "
-    "and the other nodes use VLAN 3812.",
+    longDescription="Comma-separated UMass OCT nodes. The first node uses link1 "
+    "for its local FPGA connection, and the other nodes use link2.",
 )
 pc.defineParameter(
-    "testVlanCount", "Number of host test VLANs", portal.ParameterType.INTEGER, 16,
+    "testVlanCount", "Number of host test VLANs", portal.ParameterType.INTEGER, 2,
     longDescription="Extra VLAN links between the Linux hosts. CloudLab assigns "
     "their tags at launch. Set to 0 to request just the four baseline links.",
 )
@@ -67,8 +67,8 @@ lanA = request.Link("link1", "vlan")
 lanB = request.Link("link2", "vlan")
 lanTransit = request.Link("link3", "vlan")
 lanHostTransit = request.Link("link4", "vlan")
-for link, tag in ((lanA, 3611), (lanB, 3612), (lanTransit, 3613), (lanHostTransit, 3614)):
-    link.setVlanTag(tag)
+# CloudLab allocates the VLAN tags for the baseline and test links.
+for link in (lanA, lanB, lanTransit, lanHostTransit):
     link.link_multiplexing = True
     link.best_effort = True
 
