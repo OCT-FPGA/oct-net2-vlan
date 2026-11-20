@@ -1,132 +1,124 @@
-"""OCT Alveo U280 profile with post-boot script
-"""
+"""OCT Alveo U280 with the existing four VLAN links and a host VLAN test pool."""
 
-# Import the Portal object.
 import geni.portal as portal
-# Import the ProtoGENI library.
 import geni.rspec.pg as pg
-# We use the URN library below.
-import geni.urn as urn
-# Emulab extension
 import geni.rspec.emulab
 
-# Create a portal context.
 pc = portal.Context()
-
-# Create a Request object to start building the RSpec.
 request = pc.makeRequestRSpec()
 
-# Pick your image.
-imageList = [('urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU22-64-STD', 'UBUNTU 22.04'),
-             ('urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU20-64-STD', 'UBUNTU 20.04')] 
+imageList = [
+    ("urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU22-64-STD", "Ubuntu 22.04"),
+    ("urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU20-64-STD", "Ubuntu 20.04"),
+]
+workflow = ["Vitis", "Vivado"]
+toolVersion = ["2023.2", "2023.1"]
 
-workflow = ['Vitis', 'Vivado']
+pc.defineParameter(
+    "nodes", "List of nodes", portal.ParameterType.STRING, "pc160,pc161",
+    longDescription="Comma-separated UMass OCT nodes. The first node uses VLAN 3811, "
+    "and the other nodes use VLAN 3812.",
+)
+pc.defineParameter(
+    "testVlanCount", "Number of host test VLANs", portal.ParameterType.INTEGER, 16,
+    longDescription="Extra VLAN links between the Linux hosts. CloudLab assigns "
+    "their tags at launch. Set to 0 to request just the four baseline links.",
+)
+pc.defineParameter(
+    "workflow", "Workflow", portal.ParameterType.STRING, workflow[0], workflow,
+    longDescription="Select Vitis for application acceleration or Vivado for the traditional workflow.",
+)
+pc.defineParameter(
+    "toolVersion", "Tool Version", portal.ParameterType.STRING, toolVersion[0], toolVersion,
+)
+pc.defineParameter(
+    "osImage", "Select Image", portal.ParameterType.IMAGE, imageList[0], imageList,
+)
+pc.defineParameter(
+    "remoteDesktop", "Remote Desktop Access", portal.ParameterType.BOOLEAN, False,
+    longDescription="Install GNOME desktop and VNC server.",
+)
+pc.defineParameter(
+    "tempFileSystemSize", "Temporary Filesystem Size", portal.ParameterType.INTEGER, 0,
+    advanced=True, longDescription="Temporary disk space per host in GB.",
+)
+pc.defineParameter(
+    "tempFileSystemMax", "Temp Filesystem Max Space", portal.ParameterType.BOOLEAN, False,
+    advanced=True, longDescription="Allocate all available temporary disk space.",
+)
+pc.defineParameter(
+    "tempFileSystemMount", "Temporary Filesystem Mount Point",
+    portal.ParameterType.STRING, "/mydata", advanced=True,
+)
 
-toolVersion = ['2023.2', '2023.1'] 
-
-pc.defineParameter("nodes","List of nodes",
-                   portal.ParameterType.STRING,"",
-                   longDescription="Comma-separated list of nodes (e.g., pc151,pc153). Please check the list of available nodes within the Mass cluster at https://www.cloudlab.us/cluster-status.php before you specify the nodes.")
-                   
-pc.defineParameter("workflow", "Workflow",
-                   portal.ParameterType.STRING,
-                   workflow[0], workflow,
-                   longDescription="For Vitis application acceleration workflow, select Vitis. For traditional workflow, select Vivado.")   
-
-pc.defineParameter("toolVersion", "Tool Version",
-                   portal.ParameterType.STRING,
-                   toolVersion[0], toolVersion,
-                   longDescription="Select a tool version. It is recommended to use the latest version for the deployment workflow. For more information, visit https://www.xilinx.com/products/boards-and-kits/alveo/u280.html#gettingStarted")   
-
-pc.defineParameter("osImage", "Select Image",
-                   portal.ParameterType.IMAGE,
-                   imageList[0], imageList,
-                   longDescription="Supported operating systems are Ubuntu and CentOS.")  
-
-pc.defineParameter("remoteDesktop", "Remote Desktop Access",
-                   portal.ParameterType.BOOLEAN, False,
-                   advanced=False,
-                   longDescription="Enable remote desktop access by installing GNOME desktop and VNC server.")
-
-# Optional ephemeral blockstore
-pc.defineParameter("tempFileSystemSize", "Temporary Filesystem Size",
-                   portal.ParameterType.INTEGER, 0,advanced=True,
-                   longDescription="The size in GB of a temporary file system to mount on each of your " +
-                   "nodes. Temporary means that they are deleted when your experiment is terminated. " +
-                   "The images provided by the system have small root partitions, so use this option " +
-                   "if you expect you will need more space to build your software packages or store " +
-                   "temporary files.")
-# Instead of a size, ask for all available space. 
-pc.defineParameter("tempFileSystemMax",  "Temp Filesystem Max Space",
-                    portal.ParameterType.BOOLEAN, False,
-                    advanced=True,
-                    longDescription="Instead of specifying a size for your temporary filesystem, " +
-                    "check this box to allocate all available disk space. Leave the size above as zero.")
-
-pc.defineParameter("tempFileSystemMount", "Temporary Filesystem Mount Point",
-                   portal.ParameterType.STRING,"/mydata",advanced=True,
-                   longDescription="Mount the temporary file system at this mount point; in general you " +
-                   "you do not need to change this, but we provide the option just in case your software " +
-                   "is finicky.")  
-                   
-# Retrieve the values the user specifies during instantiation.
-params = pc.bindParameters()        
-
-# Check parameter validity.
-  
+params = pc.bindParameters()
+nodeList = [node.strip() for node in params.nodes.split(",")]
+if len(nodeList) < 2 or "" in nodeList or len(set(nodeList)) != len(nodeList):
+    pc.reportError(portal.ParameterError(
+        "Enter at least two distinct UMass node names separated by commas.", ["nodes"]
+    ))
+if params.testVlanCount < 0:
+    pc.reportError(portal.ParameterError(
+        "The test VLAN count must be zero or more.", ["testVlanCount"]
+    ))
 pc.verifyParameters()
 
-lan = request.LAN()
-lan.best_effort = True
-nodeList = params.nodes.split(',')
-i = 0
-for nodeName in nodeList:
+lanA = request.Link("link1", "vlan")
+lanB = request.Link("link2", "vlan")
+lanTransit = request.Link("link3", "vlan")
+lanHostTransit = request.Link("link4", "vlan")
+for link, tag in ((lanA, 3811), (lanB, 3812), (lanTransit, 3813), (lanHostTransit, 3814)):
+    link.setVlanTag(tag)
+    link.link_multiplexing = True
+    link.best_effort = True
+
+testLinks = []
+for i in range(1, params.testVlanCount + 1):
+    link = request.Link("test-vlan-{:02d}".format(i), "vlan")
+    link.link_multiplexing = True
+    link.best_effort = True
+    # CloudLab allocates the tag. SiteRM will configure the host interfaces later.
+    testLinks.append(link)
+
+umass = "urn:publicid:IDN+cloudlab.umass.edu+authority+cm"
+for i, nodeName in enumerate(nodeList):
     host = request.RawPC(nodeName)
-    # UMass cluster
-    host.component_manager_id = "urn:publicid:IDN+cloudlab.umass.edu+authority+cm"
-    # Assign to the node hosting the FPGA.
+    host.component_manager_id = umass
     host.component_id = nodeName
     host.disk_image = params.osImage
-    
-    # Optional Blockstore
+
     if params.tempFileSystemSize > 0 or params.tempFileSystemMax:
         bs = host.Blockstore(nodeName + "-bs", params.tempFileSystemMount)
-        if params.tempFileSystemMax:
-            bs.size = "0GB"
-        else:
-            bs.size = str(params.tempFileSystemSize) + "GB"
+        bs.size = "0GB" if params.tempFileSystemMax else "{}GB".format(params.tempFileSystemSize)
         bs.placement = "any"
 
-    cmd = "sudo /local/repository/post-boot.sh {} {} {} >> /local/logs/output_log.txt 2>&1".format(params.workflow, params.toolVersion, params.remoteDesktop)
+    cmd = (
+        "sudo /local/repository/post-boot.sh {} {} {} "
+        ">> /local/logs/output_log.txt 2>&1"
+    ).format(params.workflow, params.toolVersion, params.remoteDesktop)
     host.addService(pg.Execute(shell="bash", command=cmd))
-  
-    # Since we want to create network links to the FPGA, it has its own identity.
-    fpga = request.RawPC("fpga-" + nodeName)
-    # UMass cluster
-    fpga.component_manager_id = "urn:publicid:IDN+cloudlab.umass.edu+authority+cm"
-    # Assign to the fgpa node
-    fpga.component_id = "fpga-" + nodeName
-    # Use the default image for the type of the node selected. 
-    fpga.setUseTypeDefaultImage()
 
-    # Secret sauce.
+    fpga = request.RawPC("fpga-" + nodeName)
+    fpga.component_manager_id = umass
+    fpga.component_id = "fpga-" + nodeName
+    fpga.setUseTypeDefaultImage()
     fpga.SubNodeOf(host)
 
-    host_iface1 = host.addInterface()
-    host_iface1.component_id = "eth2"
-    host_iface1.addAddress(pg.IPv4Address("192.168.40." + str(i+30), "255.255.255.0")) 
+    # Reference the same host eth3 interface from each VLAN link.
+    host_iface2 = host.addInterface()
+    host_iface2.component_id = "eth3"
+    localLink = lanA if i == 0 else lanB
+    localLink.addInterface(host_iface2)
+    lanHostTransit.addInterface(host_iface2)
+    for link in testLinks:
+        link.addInterface(host_iface2)
+
     fpga_iface1 = fpga.addInterface()
     fpga_iface1.component_id = "eth0"
-    fpga_iface1.addAddress(pg.IPv4Address("192.168.40." + str(i+10), "255.255.255.0"))
+    localLink.addInterface(fpga_iface1)
+
     fpga_iface2 = fpga.addInterface()
     fpga_iface2.component_id = "eth1"
-    fpga_iface2.addAddress(pg.IPv4Address("192.168.40." + str(i+20), "255.255.255.0"))
-    
-    lan.addInterface(fpga_iface1)
-    lan.addInterface(fpga_iface2)
-    lan.addInterface(host_iface1)
-  
-    i+=1
+    lanTransit.addInterface(fpga_iface2)
 
-# Print Request RSpec
 pc.printRequestRSpec(request)
