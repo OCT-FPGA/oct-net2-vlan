@@ -110,15 +110,20 @@ for i, nodeName in enumerate(nodeList):
     localLink = lanA if i == 0 else lanB
     localLink.addInterface(host_iface2)
     lanHostTransit.addInterface(host_iface2)
-    for link in testLinks:
-        link.addInterface(host_iface2)
+
 
     fpga_iface1 = fpga.addInterface()
     fpga_iface1.component_id = "eth0"
     localLink.addInterface(fpga_iface1)
+    lanHostTransit.addInterface(fpga_iface1)
+    for link in testLinks:
+        link.addInterface(fpga_iface1)
 
     fpga_iface2 = fpga.addInterface()
     fpga_iface2.component_id = "eth1"
     lanTransit.addInterface(fpga_iface2)
+    lanHostTransit.addInterface(fpga_iface2)
+    for link in testLinks:
+        link.addInterface(fpga_iface2)
 
 pc.printRequestRSpec(request)
